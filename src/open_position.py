@@ -42,6 +42,9 @@ class AddPosition(OKExAPI):
         """
         assert leverage > 0
         holding = await self.swap_holding()
+        # holding 不为空
+        if not holding:
+            return False
         position = abs(holding['pos'] * float(self.swap_info['ctVal']))
         if holding and position:
             fprint(lang.adjust_leverage, leverage)
@@ -117,7 +120,8 @@ class AddPosition(OKExAPI):
         :return: 加仓金额
         :rtype: float
         """
-        if not leverage: leverage = await self.get_lever()
+        if not leverage:
+            leverage = await self.get_lever()
         if usdt_size:
             last = float((await self.publicAPI.get_specific_ticker(self.spot_ID))['last'])
             target_position = usdt_size * leverage / (leverage + 1) / last
@@ -136,12 +140,14 @@ class AddPosition(OKExAPI):
         time_to_accelerate = datetime.utcnow() + timedelta(hours=accelerate_after)
 
         if target_position < self.contract_val:
-            fprint(lang.target_position_text, target_position, lang.less_than_ctval, self.contract_val)
+            fprint(lang.target_position_text, target_position,
+                   lang.less_than_ctval, self.contract_val)
             fprint(lang.abort_text)
             return 0.
 
         OP = Record('OP')
-        mydict = dict(account=self.account, instrument=self.coin, op='add', size=target_position)
+        mydict = dict(account=self.account, instrument=self.coin,
+                      op='add', size=target_position)
         OP.insert(mydict)
 
         tickers_subscription = await self.websocketAPI.subscribe_public(
@@ -160,7 +166,8 @@ class AddPosition(OKExAPI):
                 # 判断是否加速
                 if accelerate_after and datetime.utcnow() > time_to_accelerate:
                     stat = Stat(self.coin)
-                    assert (recent := stat.recent_open_stat(accelerate_after)), lang.fetch_ticker_first
+                    assert (recent := stat.recent_open_stat(
+                        accelerate_after)), lang.fetch_ticker_first
                     price_diff = recent['avg'] + 2 * recent['std']
                     time_to_accelerate = datetime.utcnow() + timedelta(hours=accelerate_after)
 
@@ -198,16 +205,20 @@ class AddPosition(OKExAPI):
                         best_bid_size = float(swap_ticker['bidSz'])
                         # print(best_ask_size, best_bid_size)
                         # continue
-                        order_size = min(target_position, best_ask_size, best_bid_size * self.contract_val)
+                        order_size = min(
+                            target_position, best_ask_size, best_bid_size * self.contract_val)
                         order_size = round_to(order_size, self.min_size)
                         order_size = round_to(order_size, self.contract_val)
 
                         # 考虑现货手续费，分别计算现货数量与合约张数
-                        spot_size = round_to(order_size / (1 + trade_fee), self.size_increment)
+                        spot_size = round_to(
+                            order_size / (1 + trade_fee), self.size_increment)
                         if spot_size > best_ask_size:
                             order_size -= self.min_size
-                            order_size = round_to(order_size, self.contract_val)
-                            spot_size = round_to(order_size / (1 + trade_fee), self.size_increment)
+                            order_size = round_to(
+                                order_size, self.contract_val)
+                            spot_size = round_to(
+                                order_size / (1 + trade_fee), self.size_increment)
                         spot_size = float_str(spot_size, self.size_decimals)
                         contract_size = round(order_size / self.contract_val)
                         contract_size = f'{contract_size:d}'
@@ -231,7 +242,8 @@ class AddPosition(OKExAPI):
                             else:
                                 if spot_res is OkexAPIException:
                                     swap_order = swap_task.result()
-                                    kwargs = dict(instId=self.swap_ID, order_id=swap_order['ordId'])
+                                    kwargs = dict(
+                                        instId=self.swap_ID, order_id=swap_order['ordId'])
                                     swap_order_info = await self.tradeAPI.get_order_info(**kwargs)
                                     fprint(swap_order_info)
                                     fprint(spot_res)
@@ -239,7 +251,8 @@ class AddPosition(OKExAPI):
                                     spot_order = spot_task.result()
                                     if swap_res.code in ('50026', '51022'):
                                         fprint(lang.futures_market_down)
-                                    kwargs = dict(instId=self.spot_ID, order_id=spot_order['ordId'])
+                                    kwargs = dict(
+                                        instId=self.spot_ID, order_id=spot_order['ordId'])
                                     spot_order_info = await self.tradeAPI.get_order_info(**kwargs)
                                     fprint(spot_order_info)
                                     fprint(swap_res)
@@ -253,7 +266,8 @@ class AddPosition(OKExAPI):
                                 # 查询订单信息
                                 if spot_order['ordId'] != '-1' and swap_order['ordId'] != '-1':
                                     spot_order_info, swap_order_info = await gather(
-                                        self.tradeAPI.get_order_info(instId=self.spot_ID, order_id=spot_order['ordId']),
+                                        self.tradeAPI.get_order_info(
+                                            instId=self.spot_ID, order_id=spot_order['ordId']),
                                         self.tradeAPI.get_order_info(instId=self.swap_ID, order_id=swap_order['ordId']))
                                     spot_order_state = spot_order_info['state']
                                     swap_order_state = swap_order_info['state']
@@ -267,14 +281,16 @@ class AddPosition(OKExAPI):
                                         fprint(lang.swap_order_failed)
                                         fprint(swap_order)
                                         if swap_order['code'] in ('50023', '51030'):
-                                            kwargs = dict(instId=self.spot_ID, order_id=spot_order['ordId'])
+                                            kwargs = dict(
+                                                instId=self.spot_ID, order_id=spot_order['ordId'])
                                             spot_order_info = await self.tradeAPI.get_order_info(**kwargs)
                                             spot_order_state = spot_order_info['state']
                                             await self.funding_settled()
                                             swap_order_state = 'canceled'
                                         else:
                                             if swap_order['code'] in ('50026', '51022'):
-                                                fprint(lang.futures_market_down)
+                                                fprint(
+                                                    lang.futures_market_down)
                                             self.exit_flag = True
 
                             await check_order()
@@ -286,10 +302,13 @@ class AddPosition(OKExAPI):
                                 # print(spot_order_state+','+swap_order_state)
                                 if spot_order_state == 'filled':
                                     if swap_order_state == 'canceled':
-                                        fprint(lang.swap_order_retract, swap_order_state)
+                                        fprint(lang.swap_order_retract,
+                                               swap_order_state)
                                         try:
-                                            sell_price = round_to(0.99 * best_bid, self.tick_size)
-                                            sell_price = float_str(sell_price, self.tick_decimals)
+                                            sell_price = round_to(
+                                                0.99 * best_bid, self.tick_size)
+                                            sell_price = float_str(
+                                                sell_price, self.tick_decimals)
                                             kwargs = dict(instId=self.swap_ID, side='sell', size=contract_size,
                                                           price=sell_price, order_type='limit')
                                             swap_order = await self.tradeAPI.take_swap_order(**kwargs)
@@ -298,14 +317,18 @@ class AddPosition(OKExAPI):
                                             self.exit_flag = True
                                             break
                                     else:
-                                        fprint(lang.swap_order_state, swap_order_state)
+                                        fprint(lang.swap_order_state,
+                                               swap_order_state)
                                         fprint(lang.await_status_update)
                                 elif swap_order_state == 'filled':
                                     if spot_order_state == 'canceled':
-                                        fprint(lang.spot_order_retract, spot_order_state)
+                                        fprint(lang.spot_order_retract,
+                                               spot_order_state)
                                         try:
-                                            buy_price = round_to(1.01 * best_ask, self.tick_size)
-                                            buy_price = float_str(buy_price, self.tick_decimals)
+                                            buy_price = round_to(
+                                                1.01 * best_ask, self.tick_size)
+                                            buy_price = float_str(
+                                                buy_price, self.tick_decimals)
                                             kwargs = dict(instId=self.spot_ID, side='buy', size=spot_size,
                                                           price=buy_price, order_type='limit')
                                             spot_order = await self.tradeAPI.take_spot_order(**kwargs)
@@ -314,7 +337,8 @@ class AddPosition(OKExAPI):
                                             self.exit_flag = True
                                             break
                                     else:
-                                        fprint(lang.spot_order_state, spot_order_state)
+                                        fprint(lang.spot_order_state,
+                                               spot_order_state)
                                         fprint(lang.await_status_update)
                                 elif spot_order_state == 'canceled' and swap_order_state == 'canceled':
                                     # fprint(lang.both_order_failed)
@@ -329,13 +353,16 @@ class AddPosition(OKExAPI):
                             # 下单成功
                             if spot_order_state == 'filled' and swap_order_state == 'filled':
                                 # 手续费扣币
-                                spot_filled = float(spot_order_info['accFillSz']) + float(spot_order_info['fee'])
-                                swap_filled = float(swap_order_info['accFillSz']) * self.contract_val
+                                spot_filled = float(
+                                    spot_order_info['accFillSz']) + float(spot_order_info['fee'])
+                                swap_filled = float(
+                                    swap_order_info['accFillSz']) * self.contract_val
                                 spot_filled_sum += spot_filled
                                 swap_filled_sum += swap_filled
                                 spot_price = float(spot_order_info['avgPx'])
                                 swap_price = float(swap_order_info['avgPx'])
-                                spot_fee = float(spot_order_info['fee']) * spot_price
+                                spot_fee = float(
+                                    spot_order_info['fee']) * spot_price
                                 swap_fee = float(swap_order_info['fee'])
                                 fee_total += spot_fee + swap_fee
                                 spot_notional -= spot_filled * spot_price
@@ -349,9 +376,11 @@ class AddPosition(OKExAPI):
                                            lang.remaining.format(target_position))
                                     mydict = dict(account=self.account, instrument=self.coin, op='add',
                                                   size=target_position_prev)
-                                    OP.mycol.find_one_and_update(mydict, {'$set': {'size': target_position}})
+                                    OP.mycol.find_one_and_update(
+                                        mydict, {'$set': {'size': target_position}})
                                 else:
-                                    fprint(lang.hedge_fail.format(self.coin, spot_filled, swap_filled))
+                                    fprint(lang.hedge_fail.format(
+                                        self.coin, spot_filled, swap_filled))
                                     self.exit_flag = True
                                     break
                             elif spot_order_state == 'canceled' and swap_order_state == 'canceled':
@@ -361,7 +390,8 @@ class AddPosition(OKExAPI):
                                 break
 
                             usdt_balance = await self.usdt_balance()
-                            target_position = min(target_position, usdt_balance * leverage / (leverage + 1) / best_ask)
+                            target_position = min(
+                                target_position, usdt_balance * leverage / (leverage + 1) / best_ask)
                             # print(usdt_balance, target_position)
                             # 重新订阅
                             break
@@ -387,7 +417,8 @@ class AddPosition(OKExAPI):
         if await self.is_hedged():
             fprint(lang.hedge_success.format(swap_filled_sum, self.coin))
         else:
-            fprint(lang.hedge_fail.format(self.coin, spot_filled_sum, swap_filled_sum))
+            fprint(lang.hedge_fail.format(
+                self.coin, spot_filled_sum, swap_filled_sum))
         usdt_size = - spot_notional - fee_total + swap_notional / leverage
         self.fut.set_result(usdt_size)
         self.fut = manager.loop.create_future()
@@ -406,7 +437,8 @@ class AddPosition(OKExAPI):
         :rtype: float
         """
         Ledger = Record('Ledger')
-        result = Ledger.find_last(dict(account=self.account, instrument=self.coin))
+        result = Ledger.find_last(
+            dict(account=self.account, instrument=self.coin))
         if result and result['title'] != '平仓' and (swap_position := await self.swap_position()):
             fprint(lang.position_exist.format(swap_position, self.coin))
             return await self.add(usdt_size=usdt_size, price_diff=price_diff, accelerate_after=accelerate_after)
@@ -417,7 +449,8 @@ class AddPosition(OKExAPI):
                 usdt_size = last * target_size * (1 + 1 / leverage)
             if usdt_balance >= usdt_size:
                 timestamp = datetime.utcnow()
-                mydict = dict(account=self.account, instrument=self.coin, timestamp=timestamp, title='开仓')
+                mydict = dict(account=self.account, instrument=self.coin,
+                              timestamp=timestamp, title='开仓')
                 Ledger.insert(mydict)
                 Record('Portfolio').mycol.insert_one(
                     dict(account=self.account, instrument=self.coin, leverage=leverage))
