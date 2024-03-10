@@ -1,10 +1,11 @@
 import pymongo
 import src.funding_rate as funding_rate
 from src.utils import *
+import os
 
 
 class Record:
-    myclient = pymongo.MongoClient('mongodb://localhost:27017/', connect=False)
+    myclient = pymongo.MongoClient(os.environ['MONGODB_URI'], connect=False)
     mydb = myclient['OKEx']
 
     def __init__(self, col=''):
@@ -68,7 +69,8 @@ async def record(accountid=3):
         if event == funding_time:
             funding_rate_list = []
             instrumentsID = await fundingRate.get_instruments_ID()
-            tasks = [publicAPI.get_historical_funding_rate(instId=swap_ID) for swap_ID in instrumentsID]
+            tasks = [publicAPI.get_historical_funding_rate(
+                instId=swap_ID) for swap_ID in instrumentsID]
             res = await asyncio.gather(*tasks, return_exceptions=True)
             for swap_ID, historical_funding_rate in zip(instrumentsID, res):
                 if isinstance(historical_funding_rate, AssertionError):
